@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -18,7 +17,13 @@ class ChildApp extends StatefulWidget {
 }
 
 class _ChildAppState extends State<ChildApp> {
-  Stream<DocumentSnapshot<Map<String, dynamic>>>? _device;
+  List<Map<String, dynamic>> _pending = [];
+  bool _connected = false;
+  Timer? _pairTimer;
+  StreamSubscription<RemoteMessage>? _foregroundPush;
+  StreamSubscription<RemoteMessage>? _openedPush;
+  late final AppLifecycleListener _lifecycle;
+  bool _checking = false;
   static const _native = MethodChannel('safeguard/child');
   StreamSubscription<String>? _tokenUpdates;
   bool _busy = false;
@@ -29,11 +34,18 @@ class _ChildAppState extends State<ChildApp> {
   @override
   void initState() {
     super.initState();
+    _lifecycle = AppLifecycleListener(onResume: () => _refresh());
+    _foregroundPush = FirebaseMessaging.onMessage.listen((_) => _refresh());
+    _openedPush = FirebaseMessaging.onMessageOpenedApp.listen((_) => _refresh());
     _issueCode();
   }
 
   @override
   void dispose() {
+    _pairTimer?.cancel();
+    _foregroundPush?.cancel();
+    _openedPush?.cancel();
+    _lifecycle.dispose();
     _tokenUpdates?.cancel();
     super.dispose();
   }
@@ -58,11 +70,7 @@ class _ChildAppState extends State<ChildApp> {
     }
   }
 
-  Future<void> _review(
-    String familyId,
-    QueryDocumentSnapshot<Map<String, dynamic>> request,
-  ) async {
-    final data = request.data();
+  Future<void> _review(Map<String, dynamic> data) async {
     final command = data['command'] as String;
     final choice = await showDialog<bool>(
       context: context,
@@ -82,8 +90,7 @@ class _ChildAppState extends State<ChildApp> {
     });
     Future<void> report(String status, [String? result]) async {
       await callBackend('updateCommand', {
-        'familyId': familyId,
-        'commandId': request.id,
+        'commandId': data['id'],
         'status': status,
         'result': result,
       });
@@ -109,34 +116,63 @@ class _ChildAppState extends State<ChildApp> {
     } catch (error) {
       if (mounted) setState(() => _error = backendError(error));
     } finally {
-      if (mounted) setState(() => _handlingRequest = false);
+      if (mounted) {
+        setState(() => _handlingRequest = false);
+        await _refresh();
+      }
     }
   }
 
-  Widget _requests(String familyId, String deviceId, String? pairingId) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance.collection('families').doc(familyId)
-          .collection('commands').where('childDeviceId', isEqualTo: deviceId)
-          .orderBy('timestamp', descending: true).limit(20).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) return const Text('Could not load requests.');
-        return Column(
-          children: [
-            for (final request in snapshot.data?.docs ?? const [])
-              if (request.data()['pairingId'] == pairingId &&
-                  request.get('status') == 'pending' &&
-                  (request.get('expiresAt') as Timestamp).toDate().isAfter(DateTime.now()))
-                ListTile(
-                  title: Text(commandLabels[request.get('command')] ?? 'Parent request'),
-                  trailing: TextButton(
-                    onPressed: _handlingRequest ? null : () => _review(familyId, request),
-                    child: const Text('Review'),
-                  ),
-                ),
-          ],
-        );
-      },
+  Widget _requests() {
+    if (_pending.isEmpty) return const Text('No pending requests');
+    return Column(
+      children: [
+        for (final request in _pending)
+          ListTile(
+            title: Text(commandLabels[request['command']] ?? 'Parent request'),
+            trailing: TextButton(
+              onPressed: _handlingRequest ? null : () => _review(request),
+              child: const Text('Review'),
+            ),
+          ),
+      ],
     );
+  }
+
+  Future<void> _refresh({bool showError = false}) async {
+    if (!mounted || _checking || FirebaseAuth.instance.currentUser == null) return;
+    _checking = true;
+    try {
+      final result = await callBackend('deviceInbox');
+      if (!mounted) return;
+      setState(() {
+        _connected = result['connected'] == true;
+        if (_connected) {
+          _code = null;
+          _pairTimer?.cancel();
+        }
+        _pending = (result['commands'] as List)
+            .map((entry) => Map<String, dynamic>.from(entry as Map))
+            .toList();
+      });
+    } catch (error) {
+      if (mounted && showError) setState(() => _error = backendError(error));
+    } finally {
+      _checking = false;
+    }
+  }
+
+  void _watchPairing() {
+    _pairTimer?.cancel();
+    var remaining = 12;
+    _pairTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!mounted || --remaining == 0 ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        timer.cancel();
+        return;
+      }
+      unawaited(_refresh());
+    });
   }
 
   Future<void> _unlink() async {
@@ -160,6 +196,7 @@ class _ChildAppState extends State<ChildApp> {
     });
     try {
       await callBackend('unlinkDevice');
+      await _refresh(showError: true);
     } catch (error) {
       if (mounted) setState(() => _error = backendError(error));
     } finally {
@@ -185,13 +222,13 @@ class _ChildAppState extends State<ChildApp> {
     });
     try {
       final auth = FirebaseAuth.instance;
-      final identity = auth.currentUser ?? (await auth.signInAnonymously()).user!;
+      if (auth.currentUser == null) await auth.signInAnonymously();
+      await _refresh(showError: true);
+      if (!mounted || _connected) return;
       final response = await callBackend('issuePairCode');
       if (!mounted) return;
-      setState(() {
-        _device ??= FirebaseFirestore.instance.collection('devices').doc(identity.uid).snapshots();
-        _code = response['code'] as String?;
-      });
+      setState(() => _code = response['code'] as String?);
+      if (_code != null) _watchPairing();
     } catch (error) {
       if (mounted) setState(() => _error = backendError(error));
     } finally {
@@ -204,14 +241,7 @@ class _ChildAppState extends State<ChildApp> {
     return GlassScaffold(
       title: 'RDX SafeGuard Child',
       body: SafeArea(
-        child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-          stream: _device,
-          builder: (context, snapshot) {
-            final familyId = snapshot.data?.data()?['familyId'] as String?;
-            final pairingId = snapshot.data?.data()?['pairingId'] as String?;
-            final savedCode = snapshot.data?.data()?['pairCode'] as String?;
-            final activeCode = savedCode == _code ? _code : null;
-            return Center(
+        child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 480),
                 child: GlassPanel(
@@ -220,18 +250,18 @@ class _ChildAppState extends State<ChildApp> {
                     padding: const EdgeInsets.all(24),
                     children: [
                       Icon(
-                        familyId == null ? Icons.phonelink_lock_outlined : Icons.verified_user_outlined,
+                        !_connected ? Icons.phonelink_lock_outlined : Icons.verified_user_outlined,
                         color: Theme.of(context).colorScheme.primary,
                         size: 42,
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        familyId == null ? 'Pair this device' : 'Device connected',
+                        !_connected ? 'Pair this device' : 'Device connected',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 16),
-                      if (familyId != null) ...[
+                      if (_connected) ...[
                         const ListTile(
                           leading: Icon(Icons.verified_user_outlined),
                           title: Text('Connected to Parent ✅'),
@@ -249,13 +279,18 @@ class _ChildAppState extends State<ChildApp> {
                           onPressed: () => _openSettings('notificationPolicySettings'),
                           child: const Text('Allow silent mode and Do Not Disturb'),
                         ),
-                        _requests(familyId, snapshot.data!.id, pairingId),
+                        OutlinedButton.icon(
+                          onPressed: () => _refresh(showError: true),
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Refresh requests'),
+                        ),
+                        _requests(),
                         TextButton(
                           onPressed: _busy || _handlingRequest ? null : _unlink,
                           child: const Text('Disconnect Parent'),
                         ),
                       ] else ...[
-                        if (activeCode case final code?) ...[
+                        if (_code case final code?) ...[
                           Text(code,
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.displayMedium?.copyWith(
@@ -268,7 +303,7 @@ class _ChildAppState extends State<ChildApp> {
                           const SizedBox(height: 16),
                           const Text(
                             'Share the code only with the parent you want to pair with. '
-                            'SafeGuard stores the pairing and request history in Firebase. '
+                            'SafeGuard stores pairing and request history on its server. '
                             'Device actions require your approval on this screen.',
                           ),
                         ],
@@ -278,14 +313,17 @@ class _ChildAppState extends State<ChildApp> {
                             onPressed: _issueCode,
                             child: const Text('Refresh Code'),
                           ),
+                        if (_code != null)
+                          TextButton(
+                            onPressed: () => _refresh(showError: true),
+                            child: const Text('Check pairing status'),
+                          ),
                       ],
                       if (_error case final error?) Text(error),
                     ],
                   ),
                 ),
               ),
-            );
-          },
         ),
       ),
     );

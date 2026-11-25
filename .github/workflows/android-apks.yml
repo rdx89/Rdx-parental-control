@@ -37,9 +37,15 @@ jobs:
           flutter pub get
           flutter analyze
       - name: Build and sign APKs
+        env:
+          SAFEGUARD_API_URL: ${{ vars.SAFEGUARD_API_URL }}
         run: |
-          flutter build apk --debug --flavor parent
-          flutter build apk --debug --flavor child
+          if [ "${{ inputs.compile_only }}" != "true" ] && [ -z "$SAFEGUARD_API_URL" ]; then
+            echo "Set the SAFEGUARD_API_URL repository variable before making installable builds."
+            exit 1
+          fi
+          flutter build apk --debug --flavor parent "--dart-define=SAFEGUARD_API_URL=$SAFEGUARD_API_URL"
+          flutter build apk --debug --flavor child "--dart-define=SAFEGUARD_API_URL=$SAFEGUARD_API_URL"
       - name: Prepare downloads
         if: ${{ !inputs.compile_only }}
         run: |

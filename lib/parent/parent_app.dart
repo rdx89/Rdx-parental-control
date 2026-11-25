@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,8 +41,9 @@ class _ParentAppState extends State<ParentApp> {
   String? _error;
   String _selectedCommand = 'lock';
   final _message = TextEditingController();
-  String? _familyId;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _familyUpdates;
+  bool _signedIn = false;
+  List<Map<String, dynamic>> _history = [];
+  Timer? _refreshTimer;
   String? _childDeviceId;
 
   @override
@@ -56,7 +56,7 @@ class _ParentAppState extends State<ParentApp> {
 
   @override
   void dispose() {
-    _familyUpdates?.cancel();
+    _refreshTimer?.cancel();
     _mobile.dispose();
     _password.dispose();
     _confirmation.dispose();
@@ -82,22 +82,24 @@ class _ParentAppState extends State<ParentApp> {
   Future<void> _loadProfile() async {
     final profile = await callBackend('parentProfile');
     if (!mounted) return;
-    final familyId = profile['familyId'] as String;
-    await _familyUpdates?.cancel();
-    if (!mounted) return;
     setState(() {
-      _familyId = familyId;
+      _signedIn = true;
       _childDeviceId = profile['childDeviceId'] as String?;
+      _history = (profile['commands'] as List).map(
+        (entry) => Map<String, dynamic>.from(entry as Map),
+      ).toList();
     });
-    _familyUpdates = FirebaseFirestore.instance.collection('families').doc(familyId)
-        .snapshots().listen((snapshot) {
-      if (!mounted || _familyId != familyId || snapshot.metadata.isFromCache) return;
-      final child = snapshot.data()?['childDeviceId'] as String?;
-      if (_childDeviceId != child) setState(() => _childDeviceId = child);
-    }, onError: (Object error) {
-      if (mounted && _familyId == familyId) {
-        setState(() => _error = 'Could not monitor the device connection.');
+  }
+
+  void _watchResult() {
+    _refreshTimer?.cancel();
+    var remaining = 6;
+    _refreshTimer = Timer.periodic(const Duration(seconds: 6), (timer) {
+      if (!mounted || --remaining == 0 || WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        timer.cancel();
+        return;
       }
+      if (!_busy) unawaited(_loadProfile().catchError((Object error) {}));
     });
   }
 
@@ -131,7 +133,10 @@ class _ParentAppState extends State<ParentApp> {
         'mobile': _mobile.text.trim(),
         'password': _password.text,
       });
-      await FirebaseAuth.instance.signInWithCustomToken(result['token'] as String);
+      await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: result['loginAlias'] as String,
+        password: _password.text,
+      );
       await _loadProfile();
       if (!mounted) return;
       _password.clear();
@@ -153,7 +158,7 @@ class _ParentAppState extends State<ParentApp> {
 
   @override
   Widget build(BuildContext context) {
-    final pairing = _familyId != null && _childDeviceId == null;
+    final pairing = _signedIn && _childDeviceId == null;
     final connected = _childDeviceId != null;
     final colors = Theme.of(context).colorScheme;
     final animate = !MediaQuery.disableAnimationsOf(context);
@@ -262,40 +267,35 @@ class _ParentAppState extends State<ParentApp> {
                             'command': _selectedCommand,
                             'message': _message.text,
                           });
+                          await _loadProfile();
+                          if (mounted) _watchResult();
                         }),
                         child: Text('Send: ${commandLabels[_selectedCommand]}'),
                       ),
-                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: FirebaseFirestore.instance
-                            .collection('families').doc(_familyId).collection('commands')
-                            .orderBy('timestamp', descending: true).limit(10).snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) return const Text('Could not load request history.');
-                          return Column(
-                            children: [
-                              for (final command in snapshot.data?.docs ?? const [])
-                                ListTile(
-                                  title: Text(commandLabels[command.get('command')] ?? 'Request'),
-                                  subtitle: Text(
-                                    [command.get('status'), command.get('result')].whereType<String>().join(' · '),
-                                  ),
-                                ),
-                            ],
-                          );
-                        },
+                      const SizedBox(height: 14),
+                      TextButton.icon(
+                        onPressed: _busy ? null : () => _run(_loadProfile),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh request history'),
                       ),
+                      for (final command in _history)
+                        ListTile(
+                          title: Text(commandLabels[command['command']] ?? 'Request'),
+                          subtitle: Text([command['status'], command['result']]
+                              .whereType<String>().join(' · ')),
+                        ),
                       TextButton(
                         onPressed: _busy ? null : _unlink,
                         child: const Text('Disconnect Child device'),
                       ),
                       OutlinedButton(
                         onPressed: _busy ? null : () => _run(() async {
-                          await _familyUpdates?.cancel();
-                          _familyUpdates = null;
+                          _refreshTimer?.cancel();
                           await FirebaseAuth.instance.signOut();
                           if (!mounted) return;
                           setState(() {
-                            _familyId = null;
+                            _signedIn = false;
+                            _history = [];
                             _childDeviceId = null;
                             _signUp = false;
                             _code.clear();

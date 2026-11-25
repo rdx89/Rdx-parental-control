@@ -1,0 +1,13 @@
+{
+  "name": "rdx-safeguard",
+  "main": "index.mjs",
+  "compatibility_date": "2026-11-25",
+  "workers_dev": true,
+  "triggers": { "crons": ["17 0 * * *"] },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "rdx-safeguard",
+    "database_id": "5391b8d4-ea50-4d77-bf68-bbd5d19dc796",
+    "migrations_dir": "migrations"
+  }]
+}
