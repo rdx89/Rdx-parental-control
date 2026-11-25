@@ -9,6 +9,20 @@ import '../shared/backend.dart';
 import '../shared/commands.dart';
 import '../shared/glass_ui.dart';
 
+const _controlIcons = <String, IconData>{
+  'lock': Icons.lock_outline,
+  'vibrate': Icons.vibration_rounded,
+  'sound': Icons.volume_up_outlined,
+  'flashlight': Icons.flashlight_on_outlined,
+  'message': Icons.chat_bubble_outline,
+  'alarm': Icons.alarm_rounded,
+  'silent': Icons.volume_off_outlined,
+  'ringer_normal': Icons.notifications_active_outlined,
+  'dnd_on': Icons.do_not_disturb_on_outlined,
+  'dnd_off': Icons.do_not_disturb_off_outlined,
+  'battery_status': Icons.battery_charging_full_outlined,
+};
+
 class ParentApp extends StatefulWidget {
   const ParentApp({super.key});
 
@@ -141,6 +155,8 @@ class _ParentAppState extends State<ParentApp> {
   Widget build(BuildContext context) {
     final pairing = _familyId != null && _childDeviceId == null;
     final connected = _childDeviceId != null;
+    final colors = Theme.of(context).colorScheme;
+    final animate = !MediaQuery.disableAnimationsOf(context);
     final title = connected
         ? 'RDX SafeGuard Parent'
         : pairing
@@ -150,6 +166,7 @@ class _ParentAppState extends State<ParentApp> {
                 : 'Log in';
     return GlassScaffold(
       title: title,
+      animateColors: true,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -167,24 +184,70 @@ class _ParentAppState extends State<ParentApp> {
                     ),
                     const SizedBox(height: 20),
                     if (connected) ...[
-                      const ListTile(
-                        leading: Icon(Icons.verified_user_outlined),
-                        title: Text('Child device connected'),
+                      ListTile(
+                        leading: Icon(Icons.verified_user_outlined, color: colors.primary),
+                        title: const Text('Child device paired'),
+                        subtitle: const Text('Requests require approval on the Child device.'),
+                        tileColor: colors.primary.withValues(alpha: .1),
                       ),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        children: [
-                          for (final entry in commandLabels.entries)
-                            ChoiceChip(
-                              label: Text(entry.value),
-                              selected: _selectedCommand == entry.key,
-                              onSelected: _busy ? null : (_) {
-                                setState(() => _selectedCommand = entry.key);
-                              },
-                            ),
-                        ],
+                      const SizedBox(height: 16),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final largeText = MediaQuery.textScalerOf(context).scale(16) > 21;
+                          final width = largeText || constraints.maxWidth < 255
+                              ? constraints.maxWidth
+                              : (constraints.maxWidth - 10) / 2;
+                          return Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              for (final entry in commandLabels.entries)
+                                SizedBox(
+                                  width: width,
+                                  child: Semantics(
+                                    selected: _selectedCommand == entry.key,
+                                    child: AnimatedContainer(
+                                      duration: animate ? const Duration(milliseconds: 220) : Duration.zero,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(16),
+                                        color: _selectedCommand == entry.key
+                                            ? colors.primary.withValues(alpha: .2)
+                                            : colors.onSurface.withValues(alpha: .07),
+                                        border: Border.all(
+                                          color: _selectedCommand == entry.key
+                                              ? colors.primary
+                                              : colors.onSurface.withValues(alpha: .13),
+                                        ),
+                                      ),
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(16),
+                                        onTap: _busy ? null : () {
+                                          setState(() => _selectedCommand = entry.key);
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Icon(
+                                                _controlIcons[entry.key] ?? Icons.tune,
+                                                color: _selectedCommand == entry.key
+                                                    ? colors.primary
+                                                    : colors.onSurfaceVariant,
+                                                size: 21,
+                                              ),
+                                              const SizedBox(height: 7),
+                                              Text(entry.value),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
                       ),
                       const SizedBox(height: 16),
                       if (_selectedCommand == 'message')
@@ -200,7 +263,7 @@ class _ParentAppState extends State<ParentApp> {
                             'message': _message.text,
                           });
                         }),
-                        child: const Text('Send request'),
+                        child: Text('Send: ${commandLabels[_selectedCommand]}'),
                       ),
                       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                         stream: FirebaseFirestore.instance

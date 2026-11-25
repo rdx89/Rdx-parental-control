@@ -67,10 +67,16 @@ ThemeData safeGuardTheme({required bool parent}) {
 }
 
 class GlassScaffold extends StatelessWidget {
-  const GlassScaffold({super.key, required this.title, required this.body});
+  const GlassScaffold({
+    super.key,
+    required this.title,
+    required this.body,
+    this.animateColors = false,
+  });
 
   final String title;
   final Widget body;
+  final bool animateColors;
 
   @override
   Widget build(BuildContext context) {
@@ -86,15 +92,12 @@ class GlassScaffold extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Positioned(
-            top: -115,
-            right: -120,
-            child: _Glow(size: 420, color: accent.withValues(alpha: .42)),
-          ),
-          const Positioned(
-            bottom: -145,
-            left: -150,
-            child: _Glow(size: 460, color: Color(0x88766afb)),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ExcludeSemantics(
+                child: _GlassLighting(accent: accent, animated: animateColors),
+              ),
+            ),
           ),
           const Positioned(
             bottom: 40,
@@ -146,6 +149,77 @@ class GlassScaffold extends StatelessWidget {
       ),
     );
   }
+}
+
+class _GlassLighting extends StatefulWidget {
+  const _GlassLighting({required this.accent, required this.animated});
+
+  final Color accent;
+  final bool animated;
+
+  @override
+  State<_GlassLighting> createState() => _GlassLightingState();
+}
+
+class _GlassLightingState extends State<_GlassLighting>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _clock = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 14),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _updateMotion();
+  }
+
+  @override
+  void didUpdateWidget(covariant _GlassLighting oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _updateMotion();
+  }
+
+  void _updateMotion() {
+    if (widget.animated && !MediaQuery.disableAnimationsOf(context)) {
+      if (!_clock.isAnimating) _clock.repeat(reverse: true);
+    } else {
+      _clock.stop();
+      _clock.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _clock.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => RepaintBoundary(
+    child: AnimatedBuilder(
+      animation: _clock,
+      builder: (context, _) {
+        final movement = Curves.easeInOut.transform(_clock.value);
+        final upper = Color.lerp(widget.accent, const Color(0xff746dff), movement)!;
+        final lower = Color.lerp(const Color(0xff766afb), const Color(0xff2cb2ce), movement)!;
+        return Stack(
+          children: [
+            Positioned(
+              top: -115 + 65 * movement,
+              right: -120 - 30 * movement,
+              child: _Glow(size: 420, color: upper.withValues(alpha: .42)),
+            ),
+            Positioned(
+              bottom: -145 + 45 * movement,
+              left: -150 + 30 * movement,
+              child: _Glow(size: 460, color: lower.withValues(alpha: .53)),
+            ),
+          ],
+        );
+      },
+    ),
+  );
 }
 
 class _Glow extends StatelessWidget {
