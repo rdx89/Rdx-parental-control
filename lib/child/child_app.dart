@@ -19,6 +19,8 @@ class ChildApp extends StatefulWidget {
 class _ChildAppState extends State<ChildApp> {
   List<Map<String, dynamic>> _pending = [];
   bool _connected = false;
+  int? _bedtimeMinutes;
+  bool _savingBedtime = false;
   Map<String, bool> _permissions = {};
   Map<String, bool>? _reportedPermissions;
   Timer? _pairTimer;
@@ -40,6 +42,7 @@ class _ChildAppState extends State<ChildApp> {
     _foregroundPush = FirebaseMessaging.onMessage.listen((_) => _refresh());
     _openedPush = FirebaseMessaging.onMessageOpenedApp.listen((_) => _refresh());
     _issueCode();
+    unawaited(_loadBedtime());
   }
 
   @override
@@ -222,6 +225,63 @@ class _ChildAppState extends State<ChildApp> {
     }
   }
 
+  Future<void> _loadBedtime() async {
+    try {
+      final minutes = await _native.invokeMethod<int>('bedtimeStatus');
+      if (mounted) setState(() => _bedtimeMinutes = minutes);
+    } on PlatformException catch (error) {
+      if (mounted) setState(() => _error = error.message ?? 'Could not load bedtime.');
+    }
+  }
+
+  Future<void> _setBedtime() async {
+    final minutes = _bedtimeMinutes;
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: minutes == null
+          ? const TimeOfDay(hour: 22, minute: 0)
+          : TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60),
+      helpText: 'Choose a daily bedtime',
+    );
+    if (!mounted || selected == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enable bedtime lock?'),
+        content: Text(
+          'This device will lock the screen once daily around ${selected.format(context)}. '
+          'You can unlock it normally or turn off the schedule here.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Enable')),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    await _saveBedtime(selected.hour * 60 + selected.minute);
+  }
+
+  Future<void> _saveBedtime(int? minutes) async {
+    if (_savingBedtime) return;
+    setState(() {
+      _savingBedtime = true;
+      _error = null;
+    });
+    try {
+      if (minutes == null) {
+        await _native.invokeMethod<void>('disableBedtime');
+      } else {
+        await _native.invokeMethod<void>('setBedtime', {'minutes': minutes});
+      }
+      await _loadBedtime();
+    } on PlatformException catch (error) {
+      if (mounted) setState(() => _error = error.message ?? 'Could not save bedtime.');
+    } finally {
+      if (mounted) setState(() => _savingBedtime = false);
+    }
+  }
+
   Future<void> _openSettings(String method) async {
     try {
       await _native.invokeMethod<void>(method);
@@ -256,6 +316,10 @@ class _ChildAppState extends State<ChildApp> {
 
   @override
   Widget build(BuildContext context) {
+    final minutes = _bedtimeMinutes;
+    final bedtime = minutes == null
+        ? null
+        : TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60).format(context);
     return GlassScaffold(
       title: 'RDX SafeGuard Child',
       body: SafeArea(
@@ -343,6 +407,36 @@ class _ChildAppState extends State<ChildApp> {
                             child: const Text('Check pairing status'),
                           ),
                       ],
+                      ExpansionTile(
+                        leading: const Icon(Icons.bedtime_outlined),
+                        title: const Text('Daily bedtime lock'),
+                        subtitle: Text(bedtime == null ? 'Off' : 'Around $bedtime each day'),
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            child: Text('Choose a time on this device. The screen locks once with a notification. Device Admin and notifications must be enabled.'),
+                          ),
+                          if (!_connected) ...[
+                            TextButton(
+                              onPressed: () => _openSettings('activateAdmin'),
+                              child: const Text('Enable Device Admin'),
+                            ),
+                            TextButton(
+                              onPressed: () => _openSettings('notificationSettings'),
+                              child: const Text('Notification settings'),
+                            ),
+                          ],
+                          TextButton(
+                            onPressed: _savingBedtime ? null : _setBedtime,
+                            child: Text(bedtime == null ? 'Set bedtime' : 'Change bedtime'),
+                          ),
+                          if (bedtime != null)
+                            TextButton(
+                              onPressed: _savingBedtime ? null : () => _saveBedtime(null),
+                              child: const Text('Turn off bedtime lock'),
+                            ),
+                        ],
+                      ),
                       if (_error case final error?) Text(error),
                     ],
                   ),

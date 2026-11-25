@@ -23,6 +23,8 @@ Cloudflare deployment के लिए `worker/wrangler.jsonc` में अप�
 - D1 में परिवार के हिसाब से सुरक्षित pending requests और FCM से Child को request notification।
 - स्क्रीन/कैमरा/माइक capture, Storage media upload, SMS, overlay, device reboot, shutdown, wipe और credential reset का कार्यान्वयन अभी बाकी है।
 
+- Child फ़ोन पर **Daily bedtime lock** में समय चुन सकते हैं। यह हर दिन एक बार notification के साथ स्क्रीन लॉक करता है। Android के battery rules के कारण समय थोड़ा बदल सकता है। यह Child फ़ोन पर चलता है और वहीं से बंद किया जा सकता है।
+
 ## वास्तविक डिवाइस पर जाँच
 
 1. Parent और Child को अलग Android devices में इंस्टॉल करें।

@@ -1,7 +1,5 @@
 package com.safeguard.app
 
-import android.app.Notification
-import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -36,6 +34,15 @@ class ChildActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 try {
                     when (call.method) {
+                        "bedtimeStatus" -> result.success(BedtimeSchedule(this).configuredMinutes())
+                        "setBedtime" -> {
+                            BedtimeSchedule(this).enable(requireNotNull(call.argument<Int>("minutes")))
+                            result.success(null)
+                        }
+                        "disableBedtime" -> {
+                            BedtimeSchedule(this).disable()
+                            result.success(null)
+                        }
                         "permissionStatus" -> {
                             result.success(mapOf(
                                 "notifications" to notifications.areNotificationsEnabled(),
@@ -99,7 +106,7 @@ class ChildActivity : FlutterActivity() {
                 "Enable notification policy access for SafeGuard first."
             }
         }
-        showNotification(label, message ?: "Approved on this device.")
+        showActionNotification(this, label, message ?: "Approved on this device.")
         when (command) {
             "lock" -> policy.lockNow()
             "battery_status" -> {
@@ -168,30 +175,5 @@ class ChildActivity : FlutterActivity() {
             player.release()
             throw failure
         }
-    }
-
-    private fun showNotification(title: String, text: String) {
-        check(notifications.areNotificationsEnabled()) { "Enable SafeGuard notifications first." }
-        val channel = "approved_requests"
-        val builder = if (Build.VERSION.SDK_INT >= 26) {
-            notifications.createNotificationChannel(
-                NotificationChannel(channel, "Approved requests", NotificationManager.IMPORTANCE_DEFAULT)
-            )
-            check((notifications.getNotificationChannel(channel)?.importance ?: NotificationManager.IMPORTANCE_NONE) != NotificationManager.IMPORTANCE_NONE) {
-                "Enable Approved requests in Android notification settings."
-            }
-            Notification.Builder(this, channel)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-        }
-        notifications.notify(
-            System.nanoTime().toInt(),
-            builder.setContentTitle("SafeGuard · " + title)
-                .setContentText(text)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setAutoCancel(true)
-                .build()
-        )
     }
 }
