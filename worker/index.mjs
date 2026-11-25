@@ -52,12 +52,21 @@ async function throttle(env, key, limit, duration) {
   if (row == null) error(429, 'Too many attempts. Try again later.');
 }
 
+export function normalizeMobileNumber(raw) {
+  if (typeof raw !== 'string') return null;
+  const compact = raw.trim().replace(/[\s()-]/g, '');
+  if (/^0?[6-9]\d{9}$/.test(compact)) return '+91' + compact.slice(-10);
+  if (/^91[6-9]\d{9}$/.test(compact)) return '+' + compact;
+  const international = compact.startsWith('00') ? '+' + compact.slice(2) : compact;
+  return /^\+[1-9]\d{7,14}$/.test(international) ? international : null;
+}
+
 async function authenticate(env, name, input, request) {
-  const mobile = typeof input.mobile === 'string' ? input.mobile.trim().replace(/[\s()-]/g, '') : '';
+  const mobile = normalizeMobileNumber(input.mobile);
   const password = input.password;
-  if (!/^\+[1-9]\d{7,14}$/.test(mobile) || typeof password !== 'string' ||
-      password.length < 8 || password.length > 128) {
-    error(400, 'Use an international mobile number and a password of 8–128 characters.');
+  if (!mobile) error(400, 'Enter a 10-digit Indian mobile number or include your country code.');
+  if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
+    error(400, 'Password must be 8–128 characters.');
   }
   const key = await crypto.subtle.importKey('raw', encode.encode(env.LOGIN_ALIAS_SECRET),
     { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);

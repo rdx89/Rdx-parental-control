@@ -3,7 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 ThemeData safeGuardTheme({required bool parent}) {
-  final accent = parent ? const Color(0xff8be9df) : const Color(0xffbdb4ff);
+  final accent = parent ? const Color(0xffc8b8ff) : const Color(0xffbdb4ff);
   final colors = ColorScheme.fromSeed(
     seedColor: accent,
     brightness: Brightness.dark,
@@ -82,11 +82,13 @@ class GlassScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     final accent = Theme.of(context).colorScheme.primary;
     return DecoratedBox(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xff121a32), Color(0xff17264a), Color(0xff10172b)],
+          colors: animateColors
+              ? const [Color(0xff111023), Color(0xff1c1536), Color(0xff121528)]
+              : const [Color(0xff121a32), Color(0xff17264a), Color(0xff10172b)],
         ),
       ),
       child: Stack(
@@ -165,7 +167,7 @@ class _GlassLightingState extends State<_GlassLighting>
     with SingleTickerProviderStateMixin {
   late final AnimationController _clock = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 14),
+    duration: const Duration(seconds: 9),
   );
 
   @override
@@ -201,19 +203,23 @@ class _GlassLightingState extends State<_GlassLighting>
       animation: _clock,
       builder: (context, _) {
         final movement = Curves.easeInOut.transform(_clock.value);
-        final upper = Color.lerp(widget.accent, const Color(0xff746dff), movement)!;
-        final lower = Color.lerp(const Color(0xff766afb), const Color(0xff2cb2ce), movement)!;
+        final upper = widget.animated
+            ? Color.lerp(const Color(0xff7958ff), const Color(0xffed529f), movement)!
+            : widget.accent;
+        final lower = widget.animated
+            ? Color.lerp(const Color(0xff25afbe), const Color(0xff766afb), movement)!
+            : const Color(0xff766afb);
         return Stack(
           children: [
             Positioned(
-              top: -115 + 65 * movement,
-              right: -120 - 30 * movement,
-              child: _Glow(size: 420, color: upper.withValues(alpha: .42)),
+              top: -115 + 150 * movement,
+              right: -120 + 65 * movement,
+              child: _Glow(size: 470, color: upper.withValues(alpha: .56)),
             ),
             Positioned(
               bottom: -145 + 45 * movement,
               left: -150 + 30 * movement,
-              child: _Glow(size: 460, color: lower.withValues(alpha: .53)),
+              child: _Glow(size: 460, color: lower.withValues(alpha: .45)),
             ),
           ],
         );
@@ -261,7 +267,7 @@ class GlassPanel extends StatelessWidget {
               gradient: const LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0x32ffffff), Color(0x16bbcffe)],
+                colors: [Color(0xc5362a51), Color(0xcf171c33)],
               ),
             ),
             child: child,

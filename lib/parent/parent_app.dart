@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../shared/backend.dart';
 import '../shared/commands.dart';
 import '../shared/glass_ui.dart';
+import '../shared/mobile_number.dart';
 
 const _controlIcons = <String, IconData>{
   'lock': Icons.lock_outline,
@@ -37,6 +38,7 @@ class _ParentAppState extends State<ParentApp> {
   final _form = GlobalKey<FormState>();
 
   bool _signUp = true;
+  bool _showPassword = false;
   bool _busy = false;
   String? _error;
   String _selectedCommand = 'lock';
@@ -130,7 +132,7 @@ class _ParentAppState extends State<ParentApp> {
     if (!_form.currentState!.validate()) return;
     await _run(() async {
       final result = await callBackend(_signUp ? 'signup' : 'login', {
-        'mobile': _mobile.text.trim(),
+        'mobile': normalizeMobileNumber(_mobile.text),
         'password': _password.text,
       });
       await FirebaseAuth.instance.signInWithEmailAndPassword(
@@ -152,9 +154,6 @@ class _ParentAppState extends State<ParentApp> {
       setState(() => _childDeviceId = result['childDeviceId'] as String);
     });
   }
-
-  String? _required(String? value) =>
-      value == null || value.trim().isEmpty ? 'Required' : null;
 
   @override
   Widget build(BuildContext context) {
@@ -183,9 +182,34 @@ class _ParentAppState extends State<ParentApp> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.all(24),
                   children: [
+                    if (!connected && !pairing) ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xff7656ff), Color(0xffbc438e)],
+                            ),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.all(13),
+                            child: Icon(Icons.shield_rounded, color: Colors.white, size: 27),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     Text(
-                      connected ? 'Device controls' : pairing ? 'Connect a device' : 'RDX SafeGuard Parent',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+                      connected
+                          ? 'Device controls'
+                          : pairing
+                              ? 'Connect a device'
+                              : _signUp ? 'Create your account' : 'Welcome back',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.6,
+                      ),
                     ),
                     const SizedBox(height: 20),
                     if (connected) ...[
@@ -323,23 +347,43 @@ class _ParentAppState extends State<ParentApp> {
                         decoration: const InputDecoration(
                           labelText: 'Mobile Number',
                           prefixIcon: Icon(Icons.phone_android_outlined),
-                          hintText: '+91…',
+                          hintText: '10-digit mobile number',
+                          helperText: 'India (+91) is added automatically.',
                         ),
                         keyboardType: TextInputType.phone,
-                        validator: _required,
+                        textInputAction: TextInputAction.next,
+                        validator: (value) => normalizeMobileNumber(value ?? '') == null
+                            ? 'Enter 10 digits or add your country code'
+                            : null,
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _password,
-                        decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
-                        obscureText: true,
-                        validator: _required,
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            tooltip: _showPassword ? 'Hide password' : 'Show password',
+                            icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                            onPressed: () => setState(() => _showPassword = !_showPassword),
+                          ),
+                        ),
+                        obscureText: !_showPassword,
+                        enableSuggestions: false,
+                        autocorrect: false,
+                        textInputAction: _signUp ? TextInputAction.next : TextInputAction.done,
+                        validator: (value) => value == null || value.length < 8 || value.length > 128
+                            ? 'Password must be 8–128 characters'
+                            : null,
                       ),
                       const SizedBox(height: 12),
                       if (_signUp)
                         TextFormField(
                           controller: _confirmation,
-                          decoration: const InputDecoration(labelText: 'Confirm Password'),
+                          decoration: const InputDecoration(
+                            labelText: 'Confirm Password',
+                            prefixIcon: Icon(Icons.lock_outline),
+                          ),
                           obscureText: true,
                           validator: (value) =>
                               value == _password.text ? null : 'Passwords do not match',
@@ -353,6 +397,7 @@ class _ParentAppState extends State<ParentApp> {
                         onPressed: _busy ? null : () => setState(() {
                           _signUp = !_signUp;
                           _confirmation.clear();
+                          _showPassword = false;
                           _error = null;
                         }),
                         child: Text(_signUp ? 'Log in' : 'Create an account'),

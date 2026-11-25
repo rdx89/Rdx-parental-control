@@ -15,6 +15,7 @@ Future<void> main() async {
     _ => throw StateError('Select the parent or child Android flavor.'),
   };
   runApp(MaterialApp(
+    debugShowCheckedModeBanner: false,
     title: appFlavor == 'parent' ? 'RDX SafeGuard Parent' : 'RDX SafeGuard Child',
     theme: safeGuardTheme(parent: appFlavor == 'parent'),
     home: app,
