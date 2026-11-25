@@ -136,6 +136,16 @@ class _ChildAppState extends State<ChildApp> {
     );
   }
 
+  Future<void> _openSettings(String method) async {
+    try {
+      await _native.invokeMethod<void>(method);
+    } on PlatformException catch (error) {
+      if (mounted) {
+        setState(() => _error = error.message ?? 'Android settings could not open.');
+      }
+    }
+  }
+
   Future<void> _issueCode() async {
     setState(() {
       _busy = true;
@@ -185,14 +195,12 @@ class _ChildAppState extends State<ChildApp> {
                         child: const Text('Enable request notifications'),
                       ),
                       OutlinedButton(
-                        onPressed: () async {
-                          try {
-                            await _native.invokeMethod<void>('activateAdmin');
-                          } on PlatformException catch (error) {
-                            if (mounted) setState(() => _error = error.message ?? 'Android settings could not open.');
-                          }
-                        },
+                        onPressed: () => _openSettings('activateAdmin'),
                         child: const Text('Enable Device Admin for locking'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () => _openSettings('notificationPolicySettings'),
+                        child: const Text('Allow silent mode and Do Not Disturb'),
                       ),
                       _requests(familyId, snapshot.data!.id),
                     ] else ...[

@@ -183,7 +183,7 @@ exports.parentProfile = onCall(async request => {
   return { familyId, childDeviceId: family.get('childDeviceId') ?? null };
 });
 
-const supportedCommands = new Set(['lock', 'vibrate', 'sound', 'flashlight', 'message']);
+const supportedCommands = new Set(['lock', 'vibrate', 'sound', 'flashlight', 'message', 'alarm', 'silent', 'ringer_normal', 'dnd_on', 'dnd_off']);
 
 function requireChild(request) {
   if (request.auth?.token.firebase?.sign_in_provider !== 'anonymous') {

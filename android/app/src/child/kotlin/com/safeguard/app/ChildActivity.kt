@@ -8,13 +8,17 @@ import android.content.ComponentName
 import android.content.Intent
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.MediaPlayer
+import android.media.RingtoneManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -39,6 +43,10 @@ class ChildActivity : FlutterActivity() {
                             }
                             result.success(null)
                         }
+                        "notificationPolicySettings" -> {
+                            startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+                            result.success(null)
+                        }
                         "execute" -> {
                             val command = requireNotNull(call.argument<String>("command"))
                             execute(command, call.argument<String>("message"))
@@ -59,12 +67,35 @@ class ChildActivity : FlutterActivity() {
             "sound" -> "Play sound"
             "flashlight" -> "Flashlight"
             "message" -> "Parent message"
+            "alarm" -> "Play alarm"
+            "silent" -> "Enable silent mode"
+            "ringer_normal" -> "Restore ringer sound"
+            "dnd_on" -> "Enable Do Not Disturb"
+            "dnd_off" -> "Disable SafeGuard Do Not Disturb"
             else -> error("This request is unavailable.")
         }
         if (command == "lock") check(policy.isAdminActive(admin)) { "Enable Device Admin first." }
+        if (command in setOf("silent", "ringer_normal", "dnd_on", "dnd_off")) {
+            check(notifications.isNotificationPolicyAccessGranted) {
+                "Enable notification policy access for SafeGuard first."
+            }
+        }
         showNotification(label, message ?: "Approved on this device.")
         when (command) {
             "lock" -> policy.lockNow()
+            "alarm" -> playAlarm()
+            "silent", "ringer_normal" -> {
+                val audio = getSystemService(AudioManager::class.java)
+                val mode = if (command == "silent") {
+                    AudioManager.RINGER_MODE_SILENT
+                } else {
+                    AudioManager.RINGER_MODE_NORMAL
+                }
+                audio.ringerMode = mode
+                check(audio.ringerMode == mode) { "Android did not change the ringer mode." }
+            }
+            "dnd_on" -> notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+            "dnd_off" -> notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
             "vibrate" -> {
                 val vibrator = getSystemService(Vibrator::class.java)
                 check(vibrator.hasVibrator()) { "This device has no vibrator." }
@@ -91,6 +122,25 @@ class ChildActivity : FlutterActivity() {
                     runCatching { camera.setTorchMode(torch, false) }
                 }, 2000)
             }
+        }
+    }
+
+    private fun playAlarm() {
+        val source = RingtoneManager.getActualDefaultRingtoneUri(this, RingtoneManager.TYPE_ALARM)
+            ?: error("No alarm sound is configured on this device.")
+        val player = MediaPlayer()
+        try {
+            player.setAudioAttributes(
+                AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
+            )
+            player.setDataSource(this, source)
+            player.prepare()
+            player.isLooping = true
+            player.start()
+            handler.postDelayed({ player.release() }, 5000)
+        } catch (failure: Exception) {
+            player.release()
+            throw failure
         }
     }
 
