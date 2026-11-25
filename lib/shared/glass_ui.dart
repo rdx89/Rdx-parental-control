@@ -105,12 +105,41 @@ class GlassScaffold extends StatelessWidget {
             appBar: AppBar(
               title: Row(
                 children: [
-                  Icon(Icons.shield_outlined, color: accent, size: 22),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: .12),
+                      border: Border.all(color: accent.withValues(alpha: .55)),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: Text(
+                      'RDX',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ),
                   const SizedBox(width: 10),
                   Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
                 ],
               ),
             ),
+            actions: [
+              IconButton(
+                tooltip: 'About SafeGuard',
+                icon: const Icon(Icons.info_outline),
+                onPressed: () => showAboutDialog(
+                  context: context,
+                  applicationName: 'RDX SafeGuard',
+                  applicationIcon: Icon(Icons.shield_outlined, color: accent, size: 32),
+                  children: const [Text('Created by Rahul Pipliwal')],
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             body: body,
           ),
         ],

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +29,7 @@ class _ParentAppState extends State<ParentApp> {
   String _selectedCommand = 'lock';
   final _message = TextEditingController();
   String? _familyId;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _familyUpdates;
   String? _childDeviceId;
 
   @override
@@ -39,6 +42,7 @@ class _ParentAppState extends State<ParentApp> {
 
   @override
   void dispose() {
+    _familyUpdates?.cancel();
     _mobile.dispose();
     _password.dispose();
     _confirmation.dispose();
@@ -64,9 +68,45 @@ class _ParentAppState extends State<ParentApp> {
   Future<void> _loadProfile() async {
     final profile = await callBackend('parentProfile');
     if (!mounted) return;
+    final familyId = profile['familyId'] as String;
+    await _familyUpdates?.cancel();
+    if (!mounted) return;
     setState(() {
-      _familyId = profile['familyId'] as String;
+      _familyId = familyId;
       _childDeviceId = profile['childDeviceId'] as String?;
+    });
+    _familyUpdates = FirebaseFirestore.instance.collection('families').doc(familyId)
+        .snapshots().listen((snapshot) {
+      if (!mounted || _familyId != familyId || snapshot.metadata.isFromCache) return;
+      final child = snapshot.data()?['childDeviceId'] as String?;
+      if (_childDeviceId != child) setState(() => _childDeviceId = child);
+    }, onError: (Object error) {
+      if (mounted && _familyId == familyId) {
+        setState(() => _error = 'Could not monitor the device connection.');
+      }
+    });
+  }
+
+  Future<void> _unlink() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Disconnect Child device?'),
+        content: const Text('A fresh code will be required to connect again.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Disconnect')),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true || _busy) return;
+    await _run(() async {
+      await callBackend('unlinkDevice');
+      if (!mounted) return;
+      setState(() {
+        _childDeviceId = null;
+        _code.clear();
+      });
     });
   }
 
@@ -102,7 +142,7 @@ class _ParentAppState extends State<ParentApp> {
     final pairing = _familyId != null && _childDeviceId == null;
     final connected = _childDeviceId != null;
     final title = connected
-        ? 'SafeGuard Parent'
+        ? 'RDX SafeGuard Parent'
         : pairing
             ? 'Enter Pair Code'
             : _signUp
@@ -122,7 +162,7 @@ class _ParentAppState extends State<ParentApp> {
                   padding: const EdgeInsets.all(24),
                   children: [
                     Text(
-                      connected ? 'Device controls' : pairing ? 'Connect a device' : 'SafeGuard Parent',
+                      connected ? 'Device controls' : pairing ? 'Connect a device' : 'RDX SafeGuard Parent',
                       style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
                     const SizedBox(height: 20),
@@ -131,16 +171,22 @@ class _ParentAppState extends State<ParentApp> {
                         leading: Icon(Icons.verified_user_outlined),
                         title: Text('Child device connected'),
                       ),
-                      DropdownButton<String>(
-                        value: _selectedCommand,
-                        onChanged: _busy ? null : (value) {
-                          if (value != null) setState(() => _selectedCommand = value);
-                        },
-                        items: [
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
                           for (final entry in commandLabels.entries)
-                            DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                            ChoiceChip(
+                              label: Text(entry.value),
+                              selected: _selectedCommand == entry.key,
+                              onSelected: _busy ? null : (_) {
+                                setState(() => _selectedCommand = entry.key);
+                              },
+                            ),
                         ],
                       ),
+                      const SizedBox(height: 16),
                       if (_selectedCommand == 'message')
                         TextField(
                           controller: _message,
@@ -175,8 +221,14 @@ class _ParentAppState extends State<ParentApp> {
                           );
                         },
                       ),
+                      TextButton(
+                        onPressed: _busy ? null : _unlink,
+                        child: const Text('Disconnect Child device'),
+                      ),
                       OutlinedButton(
                         onPressed: _busy ? null : () => _run(() async {
+                          await _familyUpdates?.cancel();
+                          _familyUpdates = null;
                           await FirebaseAuth.instance.signOut();
                           if (!mounted) return;
                           setState(() {

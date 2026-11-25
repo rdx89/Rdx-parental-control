@@ -13,6 +13,7 @@ import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.media.ToneGenerator
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -49,8 +50,7 @@ class ChildActivity : FlutterActivity() {
                         }
                         "execute" -> {
                             val command = requireNotNull(call.argument<String>("command"))
-                            execute(command, call.argument<String>("message"))
-                            result.success(null)
+                            result.success(execute(command, call.argument<String>("message")))
                         }
                         else -> result.notImplemented()
                     }
@@ -60,8 +60,9 @@ class ChildActivity : FlutterActivity() {
             }
     }
 
-    private fun execute(command: String, message: String?) {
+    private fun execute(command: String, message: String?): String? {
         val label = when (command) {
+            "battery_status" -> "Check battery"
             "lock" -> "Lock device"
             "vibrate" -> "Vibrate"
             "sound" -> "Play sound"
@@ -83,6 +84,12 @@ class ChildActivity : FlutterActivity() {
         showNotification(label, message ?: "Approved on this device.")
         when (command) {
             "lock" -> policy.lockNow()
+            "battery_status" -> {
+                val battery = requireNotNull(getSystemService(BatteryManager::class.java))
+                val percent = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                check(percent in 0..100) { "Android did not provide the battery level." }
+                return "Battery: $percent%"
+            }
             "alarm" -> playAlarm()
             "silent", "ringer_normal" -> {
                 val audio = requireNotNull(getSystemService(AudioManager::class.java))
@@ -123,6 +130,7 @@ class ChildActivity : FlutterActivity() {
                 }, 2000)
             }
         }
+        return null
     }
 
     private fun playAlarm() {

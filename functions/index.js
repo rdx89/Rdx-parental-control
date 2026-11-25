@@ -165,9 +165,10 @@ exports.pairChild = onCall(async request => {
     if (!child.exists || child.get('familyId') || child.get('pairCode') !== code) {
       throw new HttpsError('failed-precondition', 'The device cannot be paired with this code.');
     }
+    const pairingId = randomUUID();
     transaction.update(codeRef, { status: 'used', familyId });
-    transaction.update(family, { childDeviceId });
-    transaction.update(device, { familyId, connectedAt: Timestamp.now() });
+    transaction.update(family, { childDeviceId, pairingId });
+    transaction.update(device, { familyId, pairingId, connectedAt: Timestamp.now() });
     return { familyId, childDeviceId };
   });
 });
@@ -183,7 +184,7 @@ exports.parentProfile = onCall(async request => {
   return { familyId, childDeviceId: family.get('childDeviceId') ?? null };
 });
 
-const supportedCommands = new Set(['lock', 'vibrate', 'sound', 'flashlight', 'message', 'alarm', 'silent', 'ringer_normal', 'dnd_on', 'dnd_off']);
+const supportedCommands = new Set(['lock', 'vibrate', 'sound', 'flashlight', 'message', 'alarm', 'silent', 'ringer_normal', 'dnd_on', 'dnd_off', 'battery_status']);
 
 function requireChild(request) {
   if (request.auth?.token.firebase?.sign_in_provider !== 'anonymous') {
@@ -213,29 +214,37 @@ exports.queueCommand = onCall(async request => {
   await limitAttempts('command-' + uid, 20, 60 * 1000);
   const parent = await db.collection('users').doc(uid).get();
   const familyRef = db.collection('families').doc(parent.get('familyId'));
-  const family = await familyRef.get();
-  const childDeviceId = family.get('childDeviceId');
-  if (!childDeviceId || family.get('parentUid') !== uid) {
-    throw new HttpsError('failed-precondition', 'Pair a child device first.');
-  }
-  const timestamp = Timestamp.now();
-  const queued = await familyRef.collection('commands').add({
-    childDeviceId,
-    command,
-    message: command === 'message' ? message.trim() : null,
-    status: 'pending',
-    result: null,
-    timestamp,
-    expiresAt: Timestamp.fromMillis(timestamp.toMillis() + 10 * 60 * 1000),
+  const commandRef = familyRef.collection('commands').doc();
+  await db.runTransaction(async transaction => {
+    const family = await transaction.get(familyRef);
+    const childDeviceId = family.get('childDeviceId');
+    if (!childDeviceId || family.get('parentUid') !== uid) {
+      throw new HttpsError('failed-precondition', 'Pair a child device first.');
+    }
+    const timestamp = Timestamp.now();
+    transaction.create(commandRef, {
+      childDeviceId,
+      pairingId: family.get('pairingId') ?? null,
+      command,
+      message: command === 'message' ? message.trim() : null,
+      status: 'pending',
+      result: null,
+      timestamp,
+      expiresAt: Timestamp.fromMillis(timestamp.toMillis() + 10 * 60 * 1000),
+    });
   });
-  return { commandId: queued.id };
+  return { commandId: commandRef.id };
 });
 
 exports.notifyChild = onDocumentCreated('families/{familyId}/commands/{commandId}', async event => {
   const command = event.data?.data();
   if (!command || command.expiresAt.toMillis() <= Date.now()) return;
-  const registration = await db.collection('pushTokens').doc(command.childDeviceId).get();
-  if (!registration.exists) return;
+  const [registration, device] = await db.getAll(
+    db.collection('pushTokens').doc(command.childDeviceId),
+    db.collection('devices').doc(command.childDeviceId),
+  );
+  if (!registration.exists || device.get('familyId') !== event.params.familyId ||
+      (device.get('pairingId') ?? null) !== (command.pairingId ?? null)) return;
   try {
     await getMessaging().send({
       token: registration.get('token'),
@@ -267,7 +276,8 @@ exports.updateCommand = onCall(async request => {
   const device = db.collection('devices').doc(uid);
   return db.runTransaction(async transaction => {
     const [entry, child] = await transaction.getAll(command, device);
-    if (child.get('familyId') !== familyId || entry.get('childDeviceId') !== uid) {
+    if (child.get('familyId') !== familyId || entry.get('childDeviceId') !== uid ||
+        (child.get('pairingId') ?? null) !== (entry.get('pairingId') ?? null)) {
       throw new HttpsError('permission-denied', 'Command unavailable for this device.');
     }
     const current = entry.get('status');
@@ -278,6 +288,29 @@ exports.updateCommand = onCall(async request => {
       throw new HttpsError('failed-precondition', 'This request is no longer actionable.');
     }
     transaction.update(command, { status, result: result ?? null });
+    return {};
+  });
+});
+
+
+exports.unlinkDevice = onCall(async request => {
+  const isParent = request.auth?.token.role === 'parent';
+  const uid = isParent ? requireRole(request, 'parent') : requireChild(request);
+  const profile = db.collection(isParent ? 'users' : 'devices').doc(uid);
+  return db.runTransaction(async transaction => {
+    const account = await transaction.get(profile);
+    const familyId = account.get('familyId');
+    if (!familyId) return {};
+    const family = db.collection('families').doc(familyId);
+    const familySnapshot = await transaction.get(family);
+    const childDeviceId = familySnapshot.get('childDeviceId');
+    if (!childDeviceId) return {};
+    if (isParent ? familySnapshot.get('parentUid') !== uid : childDeviceId !== uid) {
+      throw new HttpsError('permission-denied', 'This device is unavailable.');
+    }
+    const device = db.collection('devices').doc(childDeviceId);
+    transaction.update(family, { childDeviceId: null, pairingId: null });
+    transaction.update(device, { familyId: null, pairingId: null, pairCode: null, connectedAt: null });
     return {};
   });
 });

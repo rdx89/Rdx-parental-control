@@ -1,4 +1,6 @@
-# SafeGuard
+# RDX SafeGuard
+
+Created by Rahul Pipliwal
 
 एक Flutter प्रोजेक्ट से दो Android ऐप बनते हैं।
 
@@ -30,7 +32,7 @@ flutter build apk --debug --flavor child
 
 - मोबाइल नंबर और पासवर्ड के साथ Parent signup और custom-token login।
 - Child के लिए anonymous Firebase session, समय-सीमित pair code और pairing status।
-- Parent से lock, vibration, tone, flashlight, message, alarm, silent mode और Do Not Disturb requests। Child ऐप में अनुरोध की समीक्षा, अनुमति और दृश्य सूचना के बाद action चलता है। परिणाम Parent history में दिखाई देता है।
+- Parent से lock, vibration, tone, flashlight, message, alarm, silent mode, Do Not Disturb और battery level requests। Child ऐप में अनुरोध की समीक्षा, अनुमति और दृश्य सूचना के बाद action चलता है। परिणाम Parent history में दिखाई देता है। Parent या Child pairing हटा सकते हैं और पुराने अनुरोध नई pairing में नहीं चलेंगे।
 - Firestore में authenticated access rules और FCM से Child को pending request notification।
 - स्क्रीन/कैमरा/माइक capture, Storage media upload, SMS, overlay, device reboot, shutdown, wipe और credential reset का कार्यान्वयन अभी बाकी है।
 

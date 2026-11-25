@@ -35,12 +35,12 @@ android {
         parent {
             dimension = "role"
             applicationIdSuffix = ".parent"
-            manifestPlaceholders = [appName: "SafeGuard Parent", safeguardActivity: "com.safeguard.app.MainActivity"]
+            manifestPlaceholders = [appName: "RDX SafeGuard Parent", safeguardActivity: "com.safeguard.app.MainActivity"]
         }
         child {
             dimension = "role"
             applicationIdSuffix = ".child"
-            manifestPlaceholders = [appName: "SafeGuard Child", safeguardActivity: "com.safeguard.app.ChildActivity"]
+            manifestPlaceholders = [appName: "RDX SafeGuard Child", safeguardActivity: "com.safeguard.app.ChildActivity"]
         }
     }
 }

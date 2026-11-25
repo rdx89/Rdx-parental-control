@@ -94,8 +94,9 @@ class _ChildAppState extends State<ChildApp> {
         return;
       }
       await report('running');
+      String? result;
       try {
-        await _native.invokeMethod<void>('execute', {
+        result = await _native.invokeMethod<String>('execute', {
           'command': command,
           'message': data['message'],
         });
@@ -104,7 +105,7 @@ class _ChildAppState extends State<ChildApp> {
         if (mounted) setState(() => _error = error.message ?? 'Action failed.');
         return;
       }
-      await report('completed');
+      await report('completed', result);
     } catch (error) {
       if (mounted) setState(() => _error = backendError(error));
     } finally {
@@ -112,7 +113,7 @@ class _ChildAppState extends State<ChildApp> {
     }
   }
 
-  Widget _requests(String familyId, String deviceId) {
+  Widget _requests(String familyId, String deviceId, String? pairingId) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance.collection('families').doc(familyId)
           .collection('commands').where('childDeviceId', isEqualTo: deviceId)
@@ -122,7 +123,8 @@ class _ChildAppState extends State<ChildApp> {
         return Column(
           children: [
             for (final request in snapshot.data?.docs ?? const [])
-              if (request.get('status') == 'pending' &&
+              if (request.data()['pairingId'] == pairingId &&
+                  request.get('status') == 'pending' &&
                   (request.get('expiresAt') as Timestamp).toDate().isAfter(DateTime.now()))
                 ListTile(
                   title: Text(commandLabels[request.get('command')] ?? 'Parent request'),
@@ -135,6 +137,34 @@ class _ChildAppState extends State<ChildApp> {
         );
       },
     );
+  }
+
+  Future<void> _unlink() async {
+    if (_busy || _handlingRequest) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Disconnect Parent?'),
+        content: const Text('Confirm to stop new requests from this Parent. A fresh code will be required to pair again.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Disconnect')),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true || _busy || _handlingRequest) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _code = null;
+    });
+    try {
+      await callBackend('unlinkDevice');
+    } catch (error) {
+      if (mounted) setState(() => _error = backendError(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _openSettings(String method) async {
@@ -172,12 +202,15 @@ class _ChildAppState extends State<ChildApp> {
   @override
   Widget build(BuildContext context) {
     return GlassScaffold(
-      title: 'SafeGuard Child',
+      title: 'RDX SafeGuard Child',
       body: SafeArea(
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: _device,
           builder: (context, snapshot) {
             final familyId = snapshot.data?.data()?['familyId'] as String?;
+            final pairingId = snapshot.data?.data()?['pairingId'] as String?;
+            final savedCode = snapshot.data?.data()?['pairCode'] as String?;
+            final activeCode = savedCode == _code ? _code : null;
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 480),
@@ -216,9 +249,13 @@ class _ChildAppState extends State<ChildApp> {
                           onPressed: () => _openSettings('notificationPolicySettings'),
                           child: const Text('Allow silent mode and Do Not Disturb'),
                         ),
-                        _requests(familyId, snapshot.data!.id),
+                        _requests(familyId, snapshot.data!.id, pairingId),
+                        TextButton(
+                          onPressed: _busy || _handlingRequest ? null : _unlink,
+                          child: const Text('Disconnect Parent'),
+                        ),
                       ] else ...[
-                        if (_code case final code?) ...[
+                        if (activeCode case final code?) ...[
                           Text(code,
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.displayMedium?.copyWith(

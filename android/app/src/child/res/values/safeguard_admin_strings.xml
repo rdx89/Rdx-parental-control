@@ -1,4 +1,4 @@
 <resources>
-    <string name="safeguard_admin_label">SafeGuard device administration</string>
-    <string name="safeguard_admin_description">Allows SafeGuard to lock the device and request a factory reset where supported by Android.</string>
+    <string name="safeguard_admin_label">RDX SafeGuard device lock</string>
+    <string name="safeguard_admin_description">Allows RDX SafeGuard to lock the screen when a request is approved on this device.</string>
 </resources>
