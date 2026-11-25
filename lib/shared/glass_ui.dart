@@ -126,20 +126,20 @@ class GlassScaffold extends StatelessWidget {
                   Flexible(child: Text(title, overflow: TextOverflow.ellipsis)),
                 ],
               ),
-            ),
-            actions: [
-              IconButton(
-                tooltip: 'About SafeGuard',
-                icon: const Icon(Icons.info_outline),
-                onPressed: () => showAboutDialog(
-                  context: context,
-                  applicationName: 'RDX SafeGuard',
-                  applicationIcon: Icon(Icons.shield_outlined, color: accent, size: 32),
-                  children: const [Text('Created by Rahul Pipliwal')],
+              actions: [
+                IconButton(
+                  tooltip: 'About SafeGuard',
+                  icon: const Icon(Icons.info_outline),
+                  onPressed: () => showAboutDialog(
+                    context: context,
+                    applicationName: 'RDX SafeGuard',
+                    applicationIcon: Icon(Icons.shield_outlined, color: accent, size: 32),
+                    children: const [Text('Created by Rahul Pipliwal')],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-            ],
+                const SizedBox(width: 8),
+              ],
+            ),
             body: body,
           ),
         ],
