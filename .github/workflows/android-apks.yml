@@ -1,0 +1,49 @@
+name: Build SafeGuard APKs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.9'
+          cache: true
+      - name: Configure Firebase apps
+        env:
+          FIREBASE_PARENT_CONFIG: ${{ secrets.FIREBASE_PARENT_CONFIG }}
+          FIREBASE_CHILD_CONFIG: ${{ secrets.FIREBASE_CHILD_CONFIG }}
+        run: python3 scripts/write-firebase-config.py
+      - name: Prepare and analyze
+        run: |
+          sh scripts/prepare-android.sh
+          flutter pub get
+          flutter analyze
+      - name: Build and sign APKs
+        run: |
+          flutter build apk --debug --flavor parent
+          flutter build apk --debug --flavor child
+          mkdir -p artifacts
+          cp build/app/outputs/flutter-apk/app-parent-debug.apk artifacts/SafeGuard-Parent.apk
+          cp build/app/outputs/flutter-apk/app-child-debug.apk artifacts/SafeGuard-Child.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SafeGuard-Parent
+          path: artifacts/SafeGuard-Parent.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SafeGuard-Child
+          path: artifacts/SafeGuard-Child.apk
+          if-no-files-found: error

@@ -1,0 +1,4 @@
+<resources>
+    <string name="safeguard_admin_label">SafeGuard device administration</string>
+    <string name="safeguard_admin_description">Allows SafeGuard to lock the device and request a factory reset where supported by Android.</string>
+</resources>

@@ -1,0 +1,50 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+if (file("src/parent/google-services.json").exists() ||
+        file("src/child/google-services.json").exists()) {
+    apply plugin: "com.google.gms.google-services"
+}
+
+android {
+    namespace = "com.safeguard.app"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    defaultConfig {
+        applicationId = "com.safeguard.app"
+        minSdk = 24
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
+
+    flavorDimensions += "role"
+    productFlavors {
+        parent {
+            dimension = "role"
+            applicationIdSuffix = ".parent"
+            manifestPlaceholders = [appName: "SafeGuard Parent", safeguardActivity: "com.safeguard.app.MainActivity"]
+        }
+        child {
+            dimension = "role"
+            applicationIdSuffix = ".child"
+            manifestPlaceholders = [appName: "SafeGuard Child", safeguardActivity: "com.safeguard.app.ChildActivity"]
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}

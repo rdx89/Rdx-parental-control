@@ -1,0 +1,14 @@
+name: safeguard
+description: SafeGuard parental controls for Android.
+publish_to: none
+version: 1.0.0+1
+environment:
+  sdk: '>=3.9.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^4.4.0
+  firebase_auth: ^6.1.4
+  cloud_functions: ^6.0.6
+  cloud_firestore: ^6.1.2
+  firebase_messaging: ^16.1.1

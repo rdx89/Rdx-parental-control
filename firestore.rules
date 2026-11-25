@@ -1,0 +1,47 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isParentOf(familyId) {
+      return request.auth != null
+        && request.auth.token.get('role', '') == 'parent'
+        && get(/databases/$(database)/documents/families/$(familyId)).data.parentUid
+          == request.auth.uid;
+    }
+
+    function isChild(deviceId) {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'anonymous'
+        && request.auth.uid == deviceId;
+    }
+
+    function isPairedChild(familyId) {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'anonymous'
+        && get(/databases/$(database)/documents/devices/$(request.auth.uid)).data.familyId
+          == familyId;
+    }
+
+    match /users/{uid} {
+      allow read, write: if false;
+    }
+
+    match /pairCodes/{code} {
+      allow read, write: if false;
+    }
+
+    match /devices/{deviceId} {
+      allow get: if isChild(deviceId)
+        || (resource.data.familyId is string && isParentOf(resource.data.familyId));
+    }
+
+    match /families/{familyId} {
+      allow get: if isParentOf(familyId);
+
+      match /commands/{commandId} {
+        allow read: if isParentOf(familyId)
+          || (isPairedChild(familyId) && resource.data.childDeviceId == request.auth.uid);
+      }
+    }
+  }
+}
