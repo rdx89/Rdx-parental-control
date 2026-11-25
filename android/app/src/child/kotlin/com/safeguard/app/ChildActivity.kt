@@ -26,8 +26,8 @@ import io.flutter.plugin.common.MethodChannel
 class ChildActivity : FlutterActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private val admin by lazy { ComponentName(this, SafeGuardAdminReceiver::class.java) }
-    private val policy by lazy { getSystemService(DevicePolicyManager::class.java) }
-    private val notifications by lazy { getSystemService(NotificationManager::class.java) }
+    private val policy by lazy { requireNotNull(getSystemService(DevicePolicyManager::class.java)) }
+    private val notifications by lazy { requireNotNull(getSystemService(NotificationManager::class.java)) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -85,7 +85,7 @@ class ChildActivity : FlutterActivity() {
             "lock" -> policy.lockNow()
             "alarm" -> playAlarm()
             "silent", "ringer_normal" -> {
-                val audio = getSystemService(AudioManager::class.java)
+                val audio = requireNotNull(getSystemService(AudioManager::class.java))
                 val mode = if (command == "silent") {
                     AudioManager.RINGER_MODE_SILENT
                 } else {
@@ -97,7 +97,7 @@ class ChildActivity : FlutterActivity() {
             "dnd_on" -> notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
             "dnd_off" -> notifications.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
             "vibrate" -> {
-                val vibrator = getSystemService(Vibrator::class.java)
+                val vibrator = requireNotNull(getSystemService(Vibrator::class.java))
                 check(vibrator.hasVibrator()) { "This device has no vibrator." }
                 if (Build.VERSION.SDK_INT >= 26) {
                     vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
@@ -112,7 +112,7 @@ class ChildActivity : FlutterActivity() {
                 check(tone.startTone(ToneGenerator.TONE_PROP_ACK, 800)) { "Cannot play a tone." }
             }
             "flashlight" -> {
-                val camera = getSystemService(CameraManager::class.java)
+                val camera = requireNotNull(getSystemService(CameraManager::class.java))
                 val torch = camera.cameraIdList.firstOrNull { id ->
                     camera.getCameraCharacteristics(id)
                         .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
@@ -151,7 +151,7 @@ class ChildActivity : FlutterActivity() {
             notifications.createNotificationChannel(
                 NotificationChannel(channel, "Approved requests", NotificationManager.IMPORTANCE_DEFAULT)
             )
-            check(notifications.getNotificationChannel(channel).importance != NotificationManager.IMPORTANCE_NONE) {
+            check((notifications.getNotificationChannel(channel)?.importance ?: NotificationManager.IMPORTANCE_NONE) != NotificationManager.IMPORTANCE_NONE) {
                 "Enable Approved requests in Android notification settings."
             }
             Notification.Builder(this, channel)

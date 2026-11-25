@@ -210,6 +210,12 @@ class _ChildAppState extends State<ChildApp> {
                           style: Theme.of(context).textTheme.displayMedium,
                         ),
                         const Text('यह कोड Parent को दें', textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Share the code only with the parent you want to pair with. '
+                          'SafeGuard stores the pairing and request history in Firebase. '
+                          'Device actions require your approval on this screen.',
+                        ),
                       ],
                       if (_busy) const LinearProgressIndicator(),
                       if (!_busy)
