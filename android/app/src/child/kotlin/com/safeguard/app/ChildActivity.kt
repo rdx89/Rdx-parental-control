@@ -36,6 +36,24 @@ class ChildActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 try {
                     when (call.method) {
+                        "permissionStatus" -> {
+                            result.success(mapOf(
+                                "notifications" to notifications.areNotificationsEnabled(),
+                                "deviceAdmin" to policy.isAdminActive(admin),
+                                "notificationPolicy" to notifications.isNotificationPolicyAccessGranted,
+                            ))
+                        }
+                        "notificationSettings" -> {
+                            val intent = if (Build.VERSION.SDK_INT >= 26) {
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                            } else {
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                    .setData(android.net.Uri.parse("package:$packageName"))
+                            }
+                            startActivity(intent)
+                            result.success(null)
+                        }
                         "activateAdmin" -> {
                             if (!policy.isAdminActive(admin)) {
                                 val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)

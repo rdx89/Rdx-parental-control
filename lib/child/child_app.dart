@@ -19,6 +19,8 @@ class ChildApp extends StatefulWidget {
 class _ChildAppState extends State<ChildApp> {
   List<Map<String, dynamic>> _pending = [];
   bool _connected = false;
+  Map<String, bool> _permissions = {};
+  Map<String, bool>? _reportedPermissions;
   Timer? _pairTimer;
   StreamSubscription<RemoteMessage>? _foregroundPush;
   StreamSubscription<RemoteMessage>? _openedPush;
@@ -50,11 +52,25 @@ class _ChildAppState extends State<ChildApp> {
     super.dispose();
   }
 
+  Future<void> _syncPermissions() async {
+    final snapshot = await _native.invokeMapMethod<String, bool>('permissionStatus');
+    if (!mounted || snapshot == null) return;
+    setState(() => _permissions = snapshot);
+    if (!_connected || snapshot.entries.every((entry) => _reportedPermissions?[entry.key] == entry.value)) {
+      return;
+    }
+    await callBackend('updatePermissions', snapshot);
+    if (mounted && _connected) _reportedPermissions = snapshot;
+  }
+
   Future<void> _registerPush() async {
     try {
       final messaging = FirebaseMessaging.instance;
       final permission = await messaging.requestPermission();
-      if (permission.authorizationStatus != AuthorizationStatus.authorized) return;
+      if (permission.authorizationStatus != AuthorizationStatus.authorized) {
+        await _openSettings('notificationSettings');
+        return;
+      }
       final token = await messaging.getToken();
       if (token != null) await callBackend('registerPushToken', {'token': token});
       if (!mounted) return;
@@ -147,6 +163,7 @@ class _ChildAppState extends State<ChildApp> {
       if (!mounted) return;
       setState(() {
         _connected = result['connected'] == true;
+        if (!_connected) _reportedPermissions = null;
         if (_connected) {
           _code = null;
           _pairTimer?.cancel();
@@ -155,6 +172,7 @@ class _ChildAppState extends State<ChildApp> {
             .map((entry) => Map<String, dynamic>.from(entry as Map))
             .toList();
       });
+      await _syncPermissions();
     } catch (error) {
       if (mounted && showError) setState(() => _error = backendError(error));
     } finally {
@@ -269,15 +287,21 @@ class _ChildAppState extends State<ChildApp> {
                         const Text('Your paired parent can send requests. Every request must be reviewed and approved on this device.'),
                         OutlinedButton(
                           onPressed: _registerPush,
-                          child: const Text('Enable request notifications'),
+                          child: Text(_permissions['notifications'] == true
+                            ? 'Register request notifications'
+                            : 'Allow request notifications'),
                         ),
                         OutlinedButton(
-                          onPressed: () => _openSettings('activateAdmin'),
-                          child: const Text('Enable Device Admin for locking'),
+                          onPressed: _permissions['deviceAdmin'] == true ? null : () => _openSettings('activateAdmin'),
+                          child: Text(_permissions['deviceAdmin'] == true
+                            ? 'Device lock ready'
+                            : 'Enable Device Admin for locking'),
                         ),
                         OutlinedButton(
-                          onPressed: () => _openSettings('notificationPolicySettings'),
-                          child: const Text('Allow silent mode and Do Not Disturb'),
+                          onPressed: _permissions['notificationPolicy'] == true ? null : () => _openSettings('notificationPolicySettings'),
+                          child: Text(_permissions['notificationPolicy'] == true
+                            ? 'Silent and Do Not Disturb ready'
+                            : 'Allow silent mode and Do Not Disturb'),
                         ),
                         OutlinedButton.icon(
                           onPressed: () => _refresh(showError: true),

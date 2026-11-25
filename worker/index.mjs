@@ -161,13 +161,17 @@ async function execute(env, operation, user, data, context) {
       return pair(env, uid, data.code);
     case 'parentProfile': {
       allow(user, 'parent');
-      const device = await stmt(env, 'SELECT id FROM devices WHERE parent_id = ?', uid).first();
+      const device = await stmt(env, 'SELECT id, permissions FROM devices WHERE parent_id = ?', uid).first();
       const { results } = await stmt(env, `
         SELECT command, CASE WHEN status = 'pending' AND expires_at <= ? THEN 'expired'
           ELSE status END AS status, result
         FROM commands WHERE parent_id = ? ORDER BY created_at DESC LIMIT 10
       `, Date.now(), uid).all();
-      return { childDeviceId: device?.id ?? null, commands: results };
+      return {
+        childDeviceId: device?.id ?? null,
+        permissions: device?.permissions ? JSON.parse(device.permissions) : null,
+        commands: results,
+      };
     }
     case 'deviceInbox': {
       allow(user, 'child');
@@ -179,6 +183,15 @@ async function execute(env, operation, user, data, context) {
         ORDER BY created_at DESC LIMIT 20
       `, uid, device.pairing_id, Date.now()).all();
       return { connected: true, commands: results };
+    }
+    case 'updatePermissions': {
+      allow(user, 'child');
+      const keys = ['notifications', 'deviceAdmin', 'notificationPolicy'];
+      if (keys.some(key => typeof data[key] !== 'boolean')) error(400, 'Invalid permission status.');
+      const permissions = JSON.stringify(Object.fromEntries(keys.map(key => [key, data[key]])));
+      await stmt(env, 'UPDATE devices SET permissions = ? WHERE id = ? AND parent_id IS NOT NULL AND permissions IS NOT ?',
+        permissions, uid, permissions).run();
+      return {};
     }
     case 'registerPushToken': {
       allow(user, 'child');
@@ -232,9 +245,9 @@ async function execute(env, operation, user, data, context) {
     }
     case 'unlinkDevice':
       if (user.role === 'parent') {
-        await stmt(env, 'UPDATE devices SET parent_id = NULL, pairing_id = NULL, paired_at = NULL WHERE parent_id = ?', uid).run();
+        await stmt(env, 'UPDATE devices SET parent_id = NULL, pairing_id = NULL, paired_at = NULL, permissions = NULL WHERE parent_id = ?', uid).run();
       } else {
-        await stmt(env, 'UPDATE devices SET parent_id = NULL, pairing_id = NULL, paired_at = NULL WHERE id = ?', uid).run();
+        await stmt(env, 'UPDATE devices SET parent_id = NULL, pairing_id = NULL, paired_at = NULL, permissions = NULL WHERE id = ?', uid).run();
       }
       return {};
     default:

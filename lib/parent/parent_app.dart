@@ -45,6 +45,7 @@ class _ParentAppState extends State<ParentApp> {
   final _message = TextEditingController();
   bool _signedIn = false;
   List<Map<String, dynamic>> _history = [];
+  Map<String, bool>? _devicePermissions;
   Timer? _refreshTimer;
   String? _childDeviceId;
 
@@ -87,6 +88,8 @@ class _ParentAppState extends State<ParentApp> {
     setState(() {
       _signedIn = true;
       _childDeviceId = profile['childDeviceId'] as String?;
+      final permissions = profile['permissions'] as Map?;
+      _devicePermissions = permissions == null ? null : Map<String, bool>.from(permissions);
       _history = (profile['commands'] as List).map(
         (entry) => Map<String, dynamic>.from(entry as Map),
       ).toList();
@@ -151,7 +154,11 @@ class _ParentAppState extends State<ParentApp> {
     await _run(() async {
       final result = await callBackend('pairChild', {'code': _code.text});
       if (!mounted) return;
-      setState(() => _childDeviceId = result['childDeviceId'] as String);
+      setState(() {
+        _childDeviceId = result['childDeviceId'] as String;
+        _devicePermissions = null;
+      });
+      await _loadProfile();
     });
   }
 
@@ -218,6 +225,25 @@ class _ParentAppState extends State<ParentApp> {
                         title: const Text('Child device paired'),
                         subtitle: const Text('Requests require approval on the Child device.'),
                         tileColor: colors.primary.withValues(alpha: .1),
+                      ),
+                      ExpansionTile(
+                        title: const Text('Child permissions'),
+                        children: [
+                          for (final setting in const {
+                            'notifications': 'Visible notifications',
+                            'deviceAdmin': 'Lock device',
+                            'notificationPolicy': 'Silent and Do Not Disturb',
+                          }.entries)
+                            ListTile(
+                              dense: true,
+                              title: Text(setting.value),
+                              trailing: Text(switch (_devicePermissions?[setting.key]) {
+                                true => 'Ready',
+                                false => 'Setup needed',
+                                null => 'Pending sync',
+                              }),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       LayoutBuilder(
