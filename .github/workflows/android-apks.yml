@@ -2,6 +2,11 @@ name: Build SafeGuard APKs
 
 on:
   workflow_dispatch:
+    inputs:
+      compile_only:
+        description: Verify both flavors without Firebase config or downloadable artifacts
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -21,6 +26,7 @@ jobs:
           flutter-version: '3.38.9'
           cache: true
       - name: Configure Firebase apps
+        if: ${{ !inputs.compile_only }}
         env:
           FIREBASE_PARENT_CONFIG: ${{ secrets.FIREBASE_PARENT_CONFIG }}
           FIREBASE_CHILD_CONFIG: ${{ secrets.FIREBASE_CHILD_CONFIG }}
@@ -34,15 +40,20 @@ jobs:
         run: |
           flutter build apk --debug --flavor parent
           flutter build apk --debug --flavor child
+      - name: Prepare downloads
+        if: ${{ !inputs.compile_only }}
+        run: |
           mkdir -p artifacts
           cp build/app/outputs/flutter-apk/app-parent-debug.apk artifacts/SafeGuard-Parent.apk
           cp build/app/outputs/flutter-apk/app-child-debug.apk artifacts/SafeGuard-Child.apk
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.compile_only }}
         with:
           name: SafeGuard-Parent
           path: artifacts/SafeGuard-Parent.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: ${{ !inputs.compile_only }}
         with:
           name: SafeGuard-Child
           path: artifacts/SafeGuard-Child.apk
