@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../shared/backend.dart';
 import '../shared/commands.dart';
+import '../shared/glass_ui.dart';
 
 class ChildApp extends StatefulWidget {
   const ChildApp({super.key});
@@ -170,8 +171,8 @@ class _ChildAppState extends State<ChildApp> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('SafeGuard Child')),
+    return GlassScaffold(
+      title: 'SafeGuard Child',
       body: SafeArea(
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: _device,
@@ -180,52 +181,70 @@ class _ChildAppState extends State<ChildApp> {
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 480),
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.all(24),
-                  children: [
-                    if (familyId != null) ...[
-                      const ListTile(
-                        leading: Icon(Icons.verified_user_outlined),
-                        title: Text('Connected to Parent ✅'),
+                child: GlassPanel(
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.all(24),
+                    children: [
+                      Icon(
+                        familyId == null ? Icons.phonelink_lock_outlined : Icons.verified_user_outlined,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 42,
                       ),
-                      const Text('Your paired parent can send requests. Every request must be reviewed and approved on this device.'),
-                      OutlinedButton(
-                        onPressed: _registerPush,
-                        child: const Text('Enable request notifications'),
+                      const SizedBox(height: 12),
+                      Text(
+                        familyId == null ? 'Pair this device' : 'Device connected',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                       ),
-                      OutlinedButton(
-                        onPressed: () => _openSettings('activateAdmin'),
-                        child: const Text('Enable Device Admin for locking'),
-                      ),
-                      OutlinedButton(
-                        onPressed: () => _openSettings('notificationPolicySettings'),
-                        child: const Text('Allow silent mode and Do Not Disturb'),
-                      ),
-                      _requests(familyId, snapshot.data!.id),
-                    ] else ...[
-                      if (_code case final code?) ...[
-                        Text(code,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.displayMedium,
+                      const SizedBox(height: 16),
+                      if (familyId != null) ...[
+                        const ListTile(
+                          leading: Icon(Icons.verified_user_outlined),
+                          title: Text('Connected to Parent ✅'),
                         ),
-                        const Text('यह कोड Parent को दें', textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Share the code only with the parent you want to pair with. '
-                          'SafeGuard stores the pairing and request history in Firebase. '
-                          'Device actions require your approval on this screen.',
+                        const Text('Your paired parent can send requests. Every request must be reviewed and approved on this device.'),
+                        OutlinedButton(
+                          onPressed: _registerPush,
+                          child: const Text('Enable request notifications'),
                         ),
+                        OutlinedButton(
+                          onPressed: () => _openSettings('activateAdmin'),
+                          child: const Text('Enable Device Admin for locking'),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => _openSettings('notificationPolicySettings'),
+                          child: const Text('Allow silent mode and Do Not Disturb'),
+                        ),
+                        _requests(familyId, snapshot.data!.id),
+                      ] else ...[
+                        if (_code case final code?) ...[
+                          Text(code,
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 4,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          const Text('यह कोड Parent को दें', textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Share the code only with the parent you want to pair with. '
+                            'SafeGuard stores the pairing and request history in Firebase. '
+                            'Device actions require your approval on this screen.',
+                          ),
+                        ],
+                        if (_busy) const LinearProgressIndicator(),
+                        if (!_busy)
+                          FilledButton(
+                            onPressed: _issueCode,
+                            child: const Text('Refresh Code'),
+                          ),
                       ],
-                      if (_busy) const LinearProgressIndicator(),
-                      if (!_busy)
-                        FilledButton(
-                          onPressed: _issueCode,
-                          child: const Text('Refresh Code'),
-                        ),
+                      if (_error case final error?) Text(error),
                     ],
-                    if (_error case final error?) Text(error),
-                  ],
+                  ),
                 ),
               ),
             );

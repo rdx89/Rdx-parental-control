@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../shared/backend.dart';
 import '../shared/commands.dart';
+import '../shared/glass_ui.dart';
 
 class ParentApp extends StatefulWidget {
   const ParentApp({super.key});
@@ -107,138 +108,148 @@ class _ParentAppState extends State<ParentApp> {
             : _signUp
                 ? 'Sign up'
                 : 'Log in';
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
+    return GlassScaffold(
+      title: title,
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
-            child: Form(
-              key: _form,
-              child: ListView(
-                shrinkWrap: true,
-                padding: const EdgeInsets.all(24),
-                children: [
-                  if (connected) ...[
-                    const ListTile(
-                      leading: Icon(Icons.verified_user_outlined),
-                      title: Text('Child device connected'),
+            child: GlassPanel(
+              child: Form(
+                key: _form,
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    Text(
+                      connected ? 'Device controls' : pairing ? 'Connect a device' : 'SafeGuard Parent',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
                     ),
-                    DropdownButton<String>(
-                      value: _selectedCommand,
-                      onChanged: _busy ? null : (value) {
-                        if (value != null) setState(() => _selectedCommand = value);
-                      },
-                      items: [
-                        for (final entry in commandLabels.entries)
-                          DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-                      ],
-                    ),
-                    if (_selectedCommand == 'message')
-                      TextField(
-                        controller: _message,
-                        maxLength: 160,
-                        decoration: const InputDecoration(labelText: 'Message'),
-                      ),
-                    FilledButton(
-                      onPressed: _busy ? null : () => _run(() async {
-                        await callBackend('queueCommand', {
-                          'command': _selectedCommand,
-                          'message': _message.text,
-                        });
-                      }),
-                      child: const Text('Send request'),
-                    ),
-                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                      stream: FirebaseFirestore.instance
-                          .collection('families').doc(_familyId).collection('commands')
-                          .orderBy('timestamp', descending: true).limit(10).snapshots(),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasError) return const Text('Could not load request history.');
-                        return Column(
-                          children: [
-                            for (final command in snapshot.data?.docs ?? const [])
-                              ListTile(
-                                title: Text(commandLabels[command.get('command')] ?? 'Request'),
-                                subtitle: Text(
-                                  [command.get('status'), command.get('result')].whereType<String>().join(' · '),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                    OutlinedButton(
-                      onPressed: _busy ? null : () => _run(() async {
-                        await FirebaseAuth.instance.signOut();
-                        if (!mounted) return;
-                        setState(() {
-                          _familyId = null;
-                          _childDeviceId = null;
-                          _signUp = false;
-                          _code.clear();
-                        });
-                      }),
-                      child: const Text('Log out'),
-                    ),
-                  ] else if (pairing) ...[
-                    TextFormField(
-                      controller: _code,
-                      decoration: const InputDecoration(labelText: 'Pair code'),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      maxLength: 6,
-                      validator: (value) =>
-                          value?.length == 6 ? null : 'Enter all six digits',
-                    ),
-                    FilledButton(
-                      onPressed: _busy ? null : _connect,
-                      child: const Text('Connect'),
-                    ),
-                  ] else ...[
-                    TextFormField(
-                      controller: _mobile,
-                      decoration: const InputDecoration(
-                        labelText: 'Mobile Number',
-                        hintText: '+91…',
-                      ),
-                      keyboardType: TextInputType.phone,
-                      validator: _required,
-                    ),
-                    TextFormField(
-                      controller: _password,
-                      decoration: const InputDecoration(labelText: 'Password'),
-                      obscureText: true,
-                      validator: _required,
-                    ),
-                    if (_signUp)
-                      TextFormField(
-                        controller: _confirmation,
-                        decoration: const InputDecoration(labelText: 'Confirm Password'),
-                        obscureText: true,
-                        validator: (value) =>
-                            value == _password.text ? null : 'Passwords do not match',
-                      ),
                     const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: _busy ? null : _authenticate,
-                      child: Text(title),
-                    ),
-                    TextButton(
-                      onPressed: _busy ? null : () => setState(() {
-                        _signUp = !_signUp;
-                        _confirmation.clear();
-                        _error = null;
-                      }),
-                      child: Text(_signUp ? 'Log in' : 'Create an account'),
+                    if (connected) ...[
+                      const ListTile(
+                        leading: Icon(Icons.verified_user_outlined),
+                        title: Text('Child device connected'),
+                      ),
+                      DropdownButton<String>(
+                        value: _selectedCommand,
+                        onChanged: _busy ? null : (value) {
+                          if (value != null) setState(() => _selectedCommand = value);
+                        },
+                        items: [
+                          for (final entry in commandLabels.entries)
+                            DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                        ],
+                      ),
+                      if (_selectedCommand == 'message')
+                        TextField(
+                          controller: _message,
+                          maxLength: 160,
+                          decoration: const InputDecoration(labelText: 'Message'),
+                        ),
+                      FilledButton(
+                        onPressed: _busy ? null : () => _run(() async {
+                          await callBackend('queueCommand', {
+                            'command': _selectedCommand,
+                            'message': _message.text,
+                          });
+                        }),
+                        child: const Text('Send request'),
+                      ),
+                      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                        stream: FirebaseFirestore.instance
+                            .collection('families').doc(_familyId).collection('commands')
+                            .orderBy('timestamp', descending: true).limit(10).snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) return const Text('Could not load request history.');
+                          return Column(
+                            children: [
+                              for (final command in snapshot.data?.docs ?? const [])
+                                ListTile(
+                                  title: Text(commandLabels[command.get('command')] ?? 'Request'),
+                                  subtitle: Text(
+                                    [command.get('status'), command.get('result')].whereType<String>().join(' · '),
+                                  ),
+                                ),
+                            ],
+                          );
+                        },
+                      ),
+                      OutlinedButton(
+                        onPressed: _busy ? null : () => _run(() async {
+                          await FirebaseAuth.instance.signOut();
+                          if (!mounted) return;
+                          setState(() {
+                            _familyId = null;
+                            _childDeviceId = null;
+                            _signUp = false;
+                            _code.clear();
+                          });
+                        }),
+                        child: const Text('Log out'),
+                      ),
+                    ] else if (pairing) ...[
+                      TextFormField(
+                        controller: _code,
+                        decoration: const InputDecoration(labelText: 'Pair code'),
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        maxLength: 6,
+                        validator: (value) =>
+                            value?.length == 6 ? null : 'Enter all six digits',
+                      ),
+                      FilledButton(
+                        onPressed: _busy ? null : _connect,
+                        child: const Text('Connect'),
+                      ),
+                    ] else ...[
+                      TextFormField(
+                        controller: _mobile,
+                        decoration: const InputDecoration(
+                          labelText: 'Mobile Number',
+                          prefixIcon: Icon(Icons.phone_android_outlined),
+                          hintText: '+91…',
+                        ),
+                        keyboardType: TextInputType.phone,
+                        validator: _required,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _password,
+                        decoration: const InputDecoration(labelText: 'Password', prefixIcon: Icon(Icons.lock_outline)),
+                        obscureText: true,
+                        validator: _required,
+                      ),
+                      const SizedBox(height: 12),
+                      if (_signUp)
+                        TextFormField(
+                          controller: _confirmation,
+                          decoration: const InputDecoration(labelText: 'Confirm Password'),
+                          obscureText: true,
+                          validator: (value) =>
+                              value == _password.text ? null : 'Passwords do not match',
+                        ),
+                      const SizedBox(height: 20),
+                      FilledButton(
+                        onPressed: _busy ? null : _authenticate,
+                        child: Text(title),
+                      ),
+                      TextButton(
+                        onPressed: _busy ? null : () => setState(() {
+                          _signUp = !_signUp;
+                          _confirmation.clear();
+                          _error = null;
+                        }),
+                        child: Text(_signUp ? 'Log in' : 'Create an account'),
+                      ),
+                    ],
+                    if (_busy) const LinearProgressIndicator(),
+                    if (_error case final error?) Padding(
+                      padding: const EdgeInsets.only(top: 16),
+                      child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
                     ),
                   ],
-                  if (_busy) const LinearProgressIndicator(),
-                  if (_error case final error?) Padding(
-                    padding: const EdgeInsets.only(top: 16),
-                    child: Text(error, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                  ),
-                ],
+                ),
               ),
             ),
           ),

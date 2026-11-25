@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import 'child/child_app.dart';
 import 'parent/parent_app.dart';
+import 'shared/glass_ui.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +16,7 @@ Future<void> main() async {
   };
   runApp(MaterialApp(
     title: appFlavor == 'parent' ? 'SafeGuard Parent' : 'SafeGuard Child',
-    theme: ThemeData(colorSchemeSeed: Colors.teal),
+    theme: safeGuardTheme(parent: appFlavor == 'parent'),
     home: app,
   ));
 }
